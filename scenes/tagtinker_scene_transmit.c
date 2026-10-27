@@ -48,6 +48,25 @@ static void tx_debug_log(const char* fmt, ...) {
 }
 
 
+/* Progress: each payload covers [lo, hi] of the whole send; data frames move
+ * the bar inside that window. Values are permille, 16-bit writes are atomic
+ * on the Cortex-M4 so the GUI thread can read them without a lock. */
+static void tx_progress_set_window(TagTinkerApp* app, uint32_t done, uint32_t span, uint32_t total) {
+    if(total == 0U) total = 1U;
+    if(done > total) done = total;
+    if(done + span > total) span = total - done;
+    app->tx_progress_lo = (uint16_t)((done * TAGTINKER_TX_PROGRESS_FULL) / total);
+    app->tx_progress_hi = (uint16_t)(((done + span) * TAGTINKER_TX_PROGRESS_FULL) / total);
+}
+
+static void tx_progress_step(TagTinkerApp* app, size_t sent, size_t count) {
+    /* Sends without a bar (single commands, Repeat mode) stay unknown. */
+    if(count == 0U || app->tx_progress == TAGTINKER_TX_PROGRESS_UNKNOWN) return;
+    uint32_t lo = app->tx_progress_lo;
+    uint32_t hi = app->tx_progress_hi;
+    app->tx_progress = (uint16_t)(lo + ((hi - lo) * (uint32_t)sent) / (uint32_t)count);
+}
+
 static uint16_t tx_apply_signal_mode(const TagTinkerApp* app, uint16_t repeats) {
     UNUSED(app);
     return repeats & 0x7FFFU;
@@ -123,6 +142,7 @@ static bool tx_send_color26_payload(TagTinkerApp* app, const TagTinkerImagePaylo
             (uint16_t)i,
             &payload->data[i * TAGTINKER_IMAGE_DATA_BYTES_PER_FRAME]);
         ok = tx_send_frame(app, frame, len, 1);
+        if(ok) tx_progress_step(app, i + 1U, frame_count);
         if(ok && (i + 1U) < frame_count) {
             furi_delay_ms(50);
         }
@@ -188,6 +208,7 @@ static bool tx_send_payload_frames(
             (uint16_t)i,
             &payload->data[i * TAGTINKER_IMAGE_DATA_BYTES_PER_FRAME]);
         ok = tx_send_frame(app, frame, len, app->data_frame_repeats);
+        if(ok) tx_progress_step(app, i + 1U, frame_count);
         /* Short delay to avoid tag overflow */
         if(ok && ((i + 1U) % 32U) == 0U && (i + 1U) < frame_count) {
             furi_delay_ms(1);
@@ -534,6 +555,7 @@ static bool tx_stream_text_image(TagTinkerApp* app) {
             if(secondary) memset(secondary, 1, (size_t)job->width * actual_h);
         }
 
+        tx_progress_set_window(app, y, actual_h, job->height);
         ok = tx_send_ping(app, job->plid);
         if(ok) furi_delay_ms(10);
         ok = tx_send_image_chunk(
@@ -1019,8 +1041,18 @@ static int32_t tx_thread_callback(void* context) {
     tx_configure_ir_output(app);
     tagtinker_ir_init();
 
+    /* Images and multi-frame sequences have a known length: show a bar.
+     * Single commands (and Repeat mode) keep the dots. */
+    bool image_job = app->image_tx_job.mode == TagTinkerTxModeBmpImage ||
+                     app->image_tx_job.mode == TagTinkerTxModeTextImage;
+    app->tx_progress_lo = 0U;
+    app->tx_progress_hi = TAGTINKER_TX_PROGRESS_FULL;
+    app->tx_progress = (!app->tx_spam && (image_job || app->frame_seq_count > 1U)) ?
+                           0U :
+                           TAGTINKER_TX_PROGRESS_UNKNOWN;
+
     /* Let OS settle (especially BLE teardown) before IR blasting */
-    if(app->image_tx_job.mode == TagTinkerTxModeBmpImage || app->image_tx_job.mode == TagTinkerTxModeTextImage) {
+    if(image_job) {
         furi_delay_ms(500);
     }
 
@@ -1043,6 +1075,7 @@ static int32_t tx_thread_callback(void* context) {
                     app->frame_sequence[i], app->frame_lengths[i],
                     tx_apply_signal_mode(app, app->frame_repeats[i]), 10);
                 if(!ok) break;
+                if(app->frame_seq_count > 1U) tx_progress_step(app, i + 1U, app->frame_seq_count);
             }
         } else {
             ok = tagtinker_ir_transmit(
@@ -1065,10 +1098,9 @@ static void transmit_draw_cb(Canvas* canvas, void* _model) {
     TagTinkerApp* app = model->app;
     uint32_t t = model->tick;
 
-    /* Static title - large bold "Tinkering Tag" with the instruction below.
-     * Kept text-only (no busy animation) because the IR blaster runs at the
-     * highest thread priority and starves the GUI; trying to animate during
-     * transmission either looks janky or steals CPU from the IR timing. */
+    /* Title, instruction, then a progress bar (images, multi-frame sends) or
+     * a three-dot indicator. The IR timing is done by TIM1 + DMA and the TX
+     * thread sleeps between frames, so redrawing here costs it nothing. */
     canvas_set_font(canvas, FontPrimary);
     canvas_draw_str_aligned(canvas, 64, 12, AlignCenter, AlignTop, "Tinkering Tag");
 
@@ -1083,19 +1115,31 @@ static void transmit_draw_cb(Canvas* canvas, void* _model) {
             (app->ir_output_active == TagTinkerIrOutputGpioA7) ? "Point the IR module at tag" :
                                                                  "Point the flipper at the tag");
 
-        /* Tiny three-dot loading indicator: rotates one bright dot through
-         * the dot triplet so even when the tick is delayed by IR bursts the
-         * change is obvious and cheap to draw. */
-        const int dot_y = 44;
-        const int dot_cx = 64;
-        const int dot_spacing = 6;
-        const uint8_t phase = (t / 4U) % 3U;
-        for(int i = 0; i < 3; i++) {
-            int x = dot_cx + (i - 1) * dot_spacing;
-            if((uint8_t)i == phase) {
-                canvas_draw_disc(canvas, x, dot_y, 2);
-            } else {
-                canvas_draw_circle(canvas, x, dot_y, 1);
+        uint16_t progress = app->tx_progress;
+        if(progress != TAGTINKER_TX_PROGRESS_UNKNOWN) {
+            /* Progress bar: frame 92x7 px, percentage on the right. */
+            if(progress > TAGTINKER_TX_PROGRESS_FULL) progress = TAGTINKER_TX_PROGRESS_FULL;
+            const int bar_x = 8, bar_y = 40, bar_w = 92, bar_h = 7;
+            canvas_draw_rframe(canvas, bar_x, bar_y, bar_w, bar_h, 2);
+            int fill = (int)(((uint32_t)(bar_w - 4) * progress) / TAGTINKER_TX_PROGRESS_FULL);
+            if(fill > 0) canvas_draw_box(canvas, bar_x + 2, bar_y + 2, fill, bar_h - 4);
+            char pct[6];
+            snprintf(pct, sizeof(pct), "%u%%", (unsigned)(progress / 10U));
+            canvas_draw_str_aligned(canvas, 121, bar_y, AlignRight, AlignTop, pct);
+        } else {
+            /* Tiny three-dot loading indicator: rotates one bright dot through
+             * the dot triplet. */
+            const int dot_y = 44;
+            const int dot_cx = 64;
+            const int dot_spacing = 6;
+            const uint8_t phase = (t / 4U) % 3U;
+            for(int i = 0; i < 3; i++) {
+                int x = dot_cx + (i - 1) * dot_spacing;
+                if((uint8_t)i == phase) {
+                    canvas_draw_disc(canvas, x, dot_y, 2);
+                } else {
+                    canvas_draw_circle(canvas, x, dot_y, 1);
+                }
             }
         }
     } else if(model->cancelled) {
@@ -1132,6 +1176,7 @@ void tagtinker_scene_transmit_on_enter(void* context) {
     model->completed = false;
     model->ok = true;
     model->cancelled = false;
+    app->tx_progress = TAGTINKER_TX_PROGRESS_UNKNOWN;
     view_commit_model(app->transmit_view, true);
 
     view_dispatcher_switch_to_view(app->view_dispatcher, TagTinkerViewTransmit);

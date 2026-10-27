@@ -44,6 +44,8 @@
 #define TAGTINKER_PRESET_TEXT_LEN 32
 #define TAGTINKER_IMAGE_PATH_LEN 255
 #define TAGTINKER_SYNC_JOB_ID_LEN 32
+#define TAGTINKER_TX_PROGRESS_UNKNOWN 0xFFFFU
+#define TAGTINKER_TX_PROGRESS_FULL    1000U
 
 typedef enum {
     TagTinkerTxModeNone = 0,
@@ -148,6 +150,12 @@ struct TagTinkerApp {
     /* TX state */
     bool tx_active;
     FuriThread* tx_thread;
+    /* Send progress in permille, written by the TX thread and drawn by the
+     * transmit view. TAGTINKER_TX_PROGRESS_UNKNOWN for single commands. */
+    volatile uint16_t tx_progress;
+    /* Share of the whole send covered by the payload being sent [lo, hi]. */
+    uint16_t tx_progress_lo;
+    uint16_t tx_progress_hi;
 
     /* NFC scan state */
     Nfc* nfc;
