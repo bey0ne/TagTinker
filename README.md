@@ -56,7 +56,7 @@ Only test tags you own or are allowed to test.
 
 ## Features
 
-- **TagTinker Flipper App:** High-performance RLE streaming IR engine.
+- **TagTinker Flipper App:** High-performance RLE streaming IR engine. Frames are timed by hardware (TIM1 + DMA), so USB, Bluetooth and the screen keep running while a tag is updated.
 - **TagTinker Image Prep (web):** Single-file, dependency-free HTML page that lists every supported tag profile, runs a full image pipeline (tone, contrast, detail, sharpen, dither, photo-grade Oklab 3-colour quantisation) and exports a Flipper-ready BMP. Hosted at **[i12bp8.github.io/TagTinker](https://i12bp8.github.io/TagTinker/)** (source: `web-image-prep/`).
 - **Drop-folder image flow:** Drop a prepared BMP into `apps_data/tagtinker/dropped/` on the Flipper SD card, then open `Targeted Payloads → <tag> → Set Image` and pick it. The Flipper rescales the 1-bit and two-plane BMPs that the image preparer exports, so one file can be sent to graphics tags of other sizes and to any page. Type 1626 (SmartTAG Color 2.6) targets only accept files up to 24 KB.
 - **NFC Tag Scan:** Add a target by scanning the tag's NFC chip instead of typing its barcode. This works when the tag's NFC data carries an ID TagTinker can decode; otherwise use `+ Type Barcode`.
