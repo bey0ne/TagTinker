@@ -95,10 +95,13 @@ The repo holds three build products plus the static web tool. A root `Makefile` 
 | `make build-esp` | Build the ESP32-S2 firmware → `esp32-wifi-fw/build/tagtinker_wifi.bin` |
 | `make flash-esp ESP_PORT=/dev/cu.usbserial-XXXX` | Build and flash the devboard (omit `ESP_PORT` to auto-detect) |
 | `make serve-web` | Serve the Image Prep tool at `http://localhost:8000/` |
+| `make test` | Run the host unit tests (plain C, no Flipper or SDK needed) |
 | `make lint` | Advisory `ufbt lint`; it currently fails on deliberately column-aligned code and is not a CI gate |
 | `make clean` | Remove build outputs only (keeps `.venv/`, `node_modules/` and `sdkconfig`) |
 
-CI ([`build.yml`](.github/workflows/build.yml)) builds all three components — FAP, worker and ESP32 firmware — on every pull request and every push to `main`; the web tool deploys to GitHub Pages from `main`.
+**Windows without `make`:** double-click `build_and_flash.bat` (or run it from a terminal) with the Flipper plugged in over USB and qFlipper closed. It runs `ufbt update`, builds the FAP and installs it with `ufbt launch`.
+
+CI ([`build.yml`](.github/workflows/build.yml)) builds all three components — FAP, worker and ESP32 firmware — and runs the host unit tests on every pull request and every push to `main`; the web tool deploys to GitHub Pages from `main`.
 
 ## FAQ
 

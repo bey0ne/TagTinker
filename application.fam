@@ -13,6 +13,7 @@ App(
     sources=[
         "tagtinker_app.c",
         "ir/tagtinker_ir.c",
+        "ir/tagtinker_ir_seq.c",
         "protocol/tagtinker_proto.c",
         "scenes/tagtinker_scene.c",
         "scenes/tagtinker_scene_about.c",
