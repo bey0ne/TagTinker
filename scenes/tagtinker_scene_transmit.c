@@ -991,6 +991,24 @@ static bool tx_stream_bmp_image(TagTinkerApp* app) {
     return ok;
 }
 
+/* Resolve the IR Output setting into the pin used for this send. */
+static void tx_configure_ir_output(TagTinkerApp* app) {
+    TagTinkerIrOutput output = TagTinkerIrOutputInternal;
+    bool enable_5v = false;
+
+    if(app->ir_output_setting == TagTinkerIrOutputSettingGpioA7) {
+        output = TagTinkerIrOutputGpioA7;
+        enable_5v = app->ir_5v;
+    } else if(app->ir_output_setting == TagTinkerIrOutputSettingAuto) {
+        output = tagtinker_ir_detect_output();
+        /* Like the stock Infrared app: a detected module gets 5V. */
+        enable_5v = (output == TagTinkerIrOutputGpioA7);
+    }
+
+    tagtinker_ir_set_output(output, enable_5v);
+    app->ir_output_active = (uint8_t)output;
+}
+
 static int32_t tx_thread_callback(void* context) {
     TagTinkerApp* app = context;
     bool ok = true;
@@ -998,6 +1016,7 @@ static int32_t tx_thread_callback(void* context) {
     /* Boost priority for IR timing */
     furi_thread_set_current_priority(FuriThreadPriorityHighest);
 
+    tx_configure_ir_output(app);
     tagtinker_ir_init();
 
     /* Let OS settle (especially BLE teardown) before IR blasting */
@@ -1056,7 +1075,13 @@ static void transmit_draw_cb(Canvas* canvas, void* _model) {
     canvas_set_font(canvas, FontSecondary);
     if(app->tx_active) {
         canvas_draw_str_aligned(
-            canvas, 64, 28, AlignCenter, AlignTop, "Point the flipper at the tag");
+            canvas,
+            64,
+            28,
+            AlignCenter,
+            AlignTop,
+            (app->ir_output_active == TagTinkerIrOutputGpioA7) ? "Point the IR module at tag" :
+                                                                 "Point the flipper at the tag");
 
         /* Tiny three-dot loading indicator: rotates one bright dot through
          * the dot triplet so even when the tick is delayed by IR bursts the

@@ -3,7 +3,7 @@ App(
     name="TagTinker",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="tagtinker_app_main",
-    requires=["gui", "notification", "dialogs", "storage", "bt", "nfc", "expansion"],
+    requires=["gui", "notification", "dialogs", "storage", "bt", "nfc", "expansion", "power"],
     stack_size=12 * 1024,
     fap_icon="tagtinker_10px.png",
     fap_category="Infrared",

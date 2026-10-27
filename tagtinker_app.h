@@ -55,6 +55,14 @@ typedef enum {
     TagTinkerSignalPP4 = 0,
 } TagTinkerSignalMode;
 
+/* Where the IR signal goes. Mirrors the stock Infrared app GPIO settings. */
+typedef enum {
+    TagTinkerIrOutputSettingInternal = 0, /* built-in LED */
+    TagTinkerIrOutputSettingGpioA7, /* external module on GPIO pin 2 (A7) */
+    TagTinkerIrOutputSettingAuto, /* A7 if a module is detected, else internal */
+    TagTinkerIrOutputSettingCount,
+} TagTinkerIrOutputSetting;
+
 typedef struct {
     TagTinkerTxMode mode;
     uint8_t plid[4];
@@ -216,6 +224,9 @@ struct TagTinkerApp {
     uint8_t data_frame_repeats;
     TagTinkerSignalMode signal_mode;
     bool show_startup_warning;
+    uint8_t ir_output_setting; /* TagTinkerIrOutputSetting */
+    bool ir_5v; /* 5V on GPIO pin 1 while sending through A7 */
+    volatile uint8_t ir_output_active; /* TagTinkerIrOutput used by the current send */
 
     /* Indicates which mode triggered raw cmd (0=broadcast, 1=targeted) */
     uint8_t raw_mode;
