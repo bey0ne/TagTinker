@@ -103,6 +103,8 @@ The repo holds three build products plus the static web tool. A root `Makefile` 
 
 **Windows without `make`:** double-click `build_and_flash.bat` (or run it from a terminal) with the Flipper plugged in over USB and qFlipper closed. It runs `ufbt update`, builds the FAP and installs it with `ufbt launch`.
 
+**Linux / macOS without `make`:** run `./build_and_flash.sh` the same way. On Linux your user needs access to the Flipper's serial port (`/dev/ttyACM0`): add it to the `dialout` group (`uucp` on Arch), then log out and back in.
+
 CI ([`build.yml`](.github/workflows/build.yml)) builds all three components — FAP, worker and ESP32 firmware — and runs the host unit tests on every pull request and every push to `main`; the web tool deploys to GitHub Pages from `main`.
 
 ## FAQ
